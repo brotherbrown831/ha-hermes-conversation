@@ -12,7 +12,7 @@ Local path:
 ```
 
 Branch: `main`
-Latest commit before this documentation update: `d3196bc fix: handle Hermes request timeouts`
+Latest repository commit: `8d3cb83 docs: update VV continuation status`
 
 ## Current objective
 
@@ -198,6 +198,9 @@ The adapter should call Home Assistant directly using a dedicated long-lived HA 
 - The new pipeline was made preferred at user request.
 - “What is the outside temperature?” correctly demonstrated the current limitation: VV cannot answer household-state questions without tools/context.
 - The user inspected the OpenRouter developer prompt and found it substantially smaller and more efficient than the old HA-wrapped prompt.
+- The user tested VV through the Home Assistant app chat and reports that it is responsive and working well.
+- The user cannot test the Voice PE until returning home; the expected conversation-agent behavior is otherwise the same, with additional STT/wake-word/TTS stages.
+- The user noticed that a source-device/source-room answer appeared random. Treat source metadata as untrusted until verified in an actual Assist/Voice PE request; do not assume the current values are correct.
 
 ## Important prompt cleanup still needed
 
