@@ -1,0 +1,12 @@
+{
+  "domain": "hermes_conversation",
+  "name": "Hermes Conversation",
+  "codeowners": ["@brotherbrown831"],
+  "config_flow": true,
+  "dependencies": ["conversation"],
+  "documentation": "https://github.com/brotherbrown831/ha-hermes-conversation",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "requirements": [],
+  "version": "0.1.0"
+}

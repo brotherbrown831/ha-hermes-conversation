@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Hermes Agent",
+        "description": "Configure an OpenAI-compatible Hermes API endpoint.",
+        "data": {
+          "base_url": "Hermes API base URL",
+          "api_key": "Hermes API key",
+          "model": "Model",
+          "timeout": "Request timeout"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to Hermes or the endpoint returned an invalid response.",
+      "timeout": "Hermes did not respond before the timeout."
+    }
+  }
+}

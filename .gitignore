@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env
+secrets.yaml
+
+# Local Home Assistant runtime data
+.storage/
+
+# Local test artifacts
+*.log
+
+# Keep real credentials out of the repository
+credentials/
