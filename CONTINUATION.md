@@ -12,7 +12,7 @@ Local path:
 ```
 
 Branch: `main`
-Latest repository commit: `8d3cb83 docs: update VV continuation status`
+Latest repository commit: `996394b docs: record VV chat validation and metadata issue`
 
 ## Current objective
 
@@ -201,6 +201,9 @@ The adapter should call Home Assistant directly using a dedicated long-lived HA 
 - The user tested VV through the Home Assistant app chat and reports that it is responsive and working well.
 - The user cannot test the Voice PE until returning home; the expected conversation-agent behavior is otherwise the same, with additional STT/wake-word/TTS stages.
 - The user noticed that a source-device/source-room answer appeared random. Treat source metadata as untrusted until verified in an actual Assist/Voice PE request; do not assume the current values are correct.
+- The user confirmed that VV works well and is responsive through the Home Assistant mobile-app chat interface.
+- The user expects the Voice PE conversation behavior to match the HA chat path, but Voice PE testing is deferred until the user returns home.
+- The user asked to preserve this state so a new conversation can resume without losing context.
 
 ## Important prompt cleanup still needed
 
@@ -258,6 +261,10 @@ Expected current result before adapter work: 6 passing contract tests.
 The user asked to preserve the current status in Git in case the chat session is lost. This document is the source of truth for resuming.
 
 Immediate next step: implement and test the dedicated two-tool Home Assistant adapter, then configure VV to use only that adapter. Do not add raw `ha_mcp`, Hindsight, broad skills, or direct write tools.
+
+## Fresh-session resume summary
+
+VV is currently usable for ordinary conversation through HA chat. Do not treat the current source device or source room metadata as reliable. Before adding tools, resume by reviewing this document and verify the raw VV tool surface after the last gateway restart. The attempted `ha_mcp:ha_search` / `ha_mcp:ha_get_state` entries were not a reliable per-tool allowlist; Hermes reported the `ha_mcp` server as exposing all tools. The safe implementation path remains a dedicated adapter MCP server exposing only `find_home_entities` and `read_home_state`.
 
 (◕‿◕)★
 _\n"}⁨
