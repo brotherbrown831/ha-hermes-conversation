@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Literal
 
 from aiohttp import ClientError
@@ -57,7 +58,7 @@ class HermesConversationEntity(conversation.ConversationEntity):
             ) as response:
                 response.raise_for_status()
                 result = await response.json()
-        except (ClientError, ValueError) as err:
+        except (asyncio.TimeoutError, ClientError, ValueError):
             return self._error_result(user_input, session_id)
 
         try:
