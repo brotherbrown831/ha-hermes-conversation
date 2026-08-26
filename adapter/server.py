@@ -96,7 +96,32 @@ def _curated_attrs(attrs: dict) -> dict:
 
 
 def _tokens(text: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9]+", text.lower()))
+    """Word tokens with camelCase/digit-boundary splitting and light stemming.
+
+    'MasterFanMod' -> {master, fan, mod}; 'master2button2' -> {master, 2, button}.
+    'lamps' -> {lamps, lamp} so a 'lamp' query still matches plural names.
+    """
+    words: list[str] = []
+    for chunk in re.findall(r"[A-Za-z0-9]+", text):
+        words.extend(p.lower() for p in re.findall(r"[A-Z][a-z]*|[a-z]+|[0-9]+", chunk) if p)
+    out: set[str] = set()
+    for w in words:
+        out.add(w)
+        if w.endswith("s") and len(w) > 3:
+            out.add(w[:-1])
+    return out
+
+
+def _overlap_score(q_tokens: set[str], cand_tokens: set[str]) -> int:
+    """Count query tokens matched in candidate tokens (equal, prefix, or suffix)."""
+    low = {t for t in cand_tokens if len(t) >= 2}
+    score = 0
+    for qt in q_tokens:
+        if qt in low:
+            score += 1
+        elif len(qt) >= 3 and any(t.startswith(qt) or qt.startswith(t) for t in low if len(t) >= 3):
+            score += 1
+    return score
 
 
 def _load_allowed_scripts() -> set[str]:
@@ -131,13 +156,16 @@ def find_home_entities(query: str = "", domain: str = "", area: str = "", limit:
     states = _http("GET", "/api/states") or []
     reg = _entity_registry()
     q_tokens = _tokens(q) if q else set()
+    NOISE_DOMAINS = {"automation", "script", "scene", "group", "zone"}
 
     scored = []
     for st in states:
         eid = st.get("entity_id", "")
+        e_dom = eid.split(".", 1)[0] if "." in eid else ""
+        if e_dom in NOISE_DOMAINS:
+            continue
         attrs = st.get("attributes", {})
         name = attrs.get("friendly_name", eid)
-        e_dom = eid.split(".", 1)[0] if "." in eid else ""
         e_area = reg.get(eid) or ""
         if dom and e_dom != dom:
             continue
@@ -148,11 +176,13 @@ def find_home_entities(query: str = "", domain: str = "", area: str = "", limit:
             continue
         eid_l, name_l, area_l = eid.lower(), name.lower(), e_area.lower()
         substr = (q in eid_l) or (q in name_l) or (q in area_l)
-        overlap = len(q_tokens & _tokens(name_l)) + len(q_tokens & _tokens(area_l))
+        overlap = _overlap_score(q_tokens, _tokens(name_l) | _tokens(eid_l)) + _overlap_score(q_tokens, _tokens(area_l))
         if substr:
             score = 1000 + len(q) + overlap
         elif overlap >= 1:
             score = overlap * 10
+            if e_dom in q_tokens:
+                score += 5  # query named the device domain explicitly (e.g. 'fan')
         else:
             continue
         scored.append((score, eid, name, st.get("state"), e_area))
@@ -169,7 +199,7 @@ def find_home_entities(query: str = "", domain: str = "", area: str = "", limit:
     partial = q and not any(s >= 1000 for s, *_ in scored[:len(hits)])
     out = {"found": len(hits), "entities": hits}
     if partial:
-        out["note"] = "No exact name match; showing closest partial matches (names may use shortened words, e.g. 'Bed' for 'Bedroom')."
+        out["note"] = "No exact name match; showing closest partial matches (device names may be concatenated, e.g. 'MasterFanMod')."
     return json.dumps(out)
 
 
@@ -209,6 +239,9 @@ def control_entity(entity_id: str, action: str) -> str:
     for covers. Use find_home_entities first to resolve the entity ID.
     Locks, alarms, cameras, sensors, and all other domains are NOT
     controllable through this tool — only light, switch, fan, and cover.
+    When the user means 'the <device>' in a room and several matching entities
+    of the same domain are in the same state, control all of them instead of
+    asking which one; ask only when their states differ or the action is risky.
     """
     eid = entity_id.strip().lower()
     if not ENTITY_ID_RE.match(eid):
