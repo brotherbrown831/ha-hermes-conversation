@@ -296,7 +296,17 @@ VV is currently usable for ordinary conversation through HA chat. Do not treat t
 
 ### Next step
 
-`run_approved_routine` with a fixed script allowlist is STILL not implemented. HA currently has zero `script.*` entities, so create the base scripts in HA first (good_morning, goodnight, movie_mode, prepare_leave_home, relax_mode, and any desired announcement routine), then add the third tool to the adapter and retest. Firewall port 8643 to the HA VM (or Tailscale) and clean up the VV developer prompt remain pending.
+### 2026-08-26 (later) — control_entity + run_approved_routine added
+
+- New tool `control_entity(entity_id, action)`: on/off/toggle for `light|switch|fan`, open/close/stop for `cover`. Other domains (locks, alarms, cameras, sensors, media) are hard-denied via the `CONTROL_SERVICES` whitelist. Verifies the entity exists and is available, calls the HA service, then reports `state_before`/`state_after` (0.4s settle). Nolan explicitly wants entity control — NO read-only instruction was added to VV's prompt.
+- New tool `run_approved_routine(script)`: allowlist read from `adapter/allowed_scripts.json` (seeded with good_morning, goodnight, movie_mode, prepare_leave_home, relax_mode, secure_house). Refuses unapproved scripts; reports clearly when an approved script does not exist in HA yet.
+- `find_home_entities` improved: substring + word-overlap scoring (fixes "master bedroom lamps" vs "Master Bed Lamp L"), "partial match" note instead of a bare zero-hit, max 10 results.
+- Verified: "Turn on the master bedroom lamps." via HA chat → VV used find (both lamps) + control_entity ×2 → `light.sonoffext1` and `light.master_bed_lamp_r` both `on`; reply "Both master bedroom lamps are on. Cozy choice." — 6 API calls / ~9s / cache 81–95% (was 7 calls / ~13s with a wrong answer before the fix).
+- HA still has zero `script.*` entities → `run_approved_routine` returns a clean "approved but not created" error until the base scripts exist.
+
+### Next step
+
+Create the base routine scripts in HA (good_morning, goodnight, movie_mode, prepare_leave_home, relax_mode, secure_house) so `run_approved_routine` can actually run; a confirmation flow would be required before ever adding lock/alarm control (currently denied). Firewall port 8643 to the HA VM (or Tailscale) and clean up the VV developer prompt remain pending.
 
 (◕‿◕)★
 _\n"}⁨
