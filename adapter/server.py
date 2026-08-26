@@ -72,19 +72,108 @@ def _http(method: str, path: str, body: dict | None = None, timeout: float = 8.0
         raise RuntimeError(f"Home Assistant API error {e.code} on {method} {path}: {detail}") from None
 
 
+def _ws_fetch_registry() -> dict:
+    """Fetch entity/device/area registries via the Home Assistant WebSocket API.
+
+    config/entity_registry/list returns partial records WITHOUT aliases, so
+    this also fetches the full per-entity record (config/entity_registry/get —
+    the same call the UI edit dialog uses) for aliases, plus the device
+    registry for device-inherited areas. Runs on a worker thread with its own
+    event loop (the MCP sync-tool thread may already be inside one).
+    Returns {"entities": {eid: {...}}, "devices": {id: {...}}, "areas": [...]}
+    or {"__error__": msg}.
+    """
+    import asyncio
+    import json
+
+    import websockets
+
+    async def _cmd(ws, mid: int, mtype: str, data: dict | None = None):
+        payload = {"id": mid, "type": mtype}
+        if data is not None:
+            payload.update(data)
+        await ws.send(json.dumps(payload))
+        while True:
+            msg = json.loads(await ws.recv())
+            if msg.get("id") == mid:
+                if not msg.get("success"):
+                    raise RuntimeError(f"HA WS {mtype} failed: {msg.get('error')}")
+                return msg.get("result")
+
+    async def _run():
+        ws_url = HA_BASE_URL.replace("https://", "wss://").replace("http://", "ws://") + "/api/websocket"
+        async with websockets.connect(ws_url, open_timeout=8, close_timeout=3, max_size=20 * 1024 * 1024) as ws:
+            hello = json.loads(await ws.recv())
+            if hello.get("type") != "auth_required":
+                raise RuntimeError(f"Unexpected HA WS hello: {hello}")
+            await ws.send(json.dumps({"type": "auth", "access_token": HA_TOKEN}))
+            auth = json.loads(await ws.recv())
+            if auth.get("type") != "auth_ok":
+                raise RuntimeError(f"HA WS auth failed: {auth}")
+            entities = await _cmd(ws, 1, "config/entity_registry/list")
+            areas = await _cmd(ws, 2, "config/area_registry/list")
+            devices = await _cmd(ws, 3, "config/device_registry/list") or []
+            dev_by_id = {d.get("id"): d for d in devices if d.get("id")}
+
+            # NOTE: no concurrent send/recv here — a single websocket connection
+            # does not tolerate concurrent message I/O. Sequential per-entity
+            # GETs are ~2-4s on LAN for ~1800 entities, run once per cache window.
+            counter = {"n": 100}
+            merged = {}
+            for e in entities:
+                counter["n"] += 1
+                try:
+                    rec = await _cmd(ws, counter["n"], "config/entity_registry/get", {"entity_id": e["entity_id"]})
+                except Exception:  # noqa: BLE001 — keep partial record if get fails
+                    rec = e
+                merged[e["entity_id"]] = {
+                    "entity_id": e["entity_id"],
+                    "device_id": rec.get("device_id"),
+                    "area_id": rec.get("area_id"),
+                    "aliases": [a for a in (rec.get("aliases") or []) if isinstance(a, str)],
+                }
+            return {"entities": merged, "devices": dev_by_id, "areas": areas}
+
+    holder: list = [{"__error__": "registry fetch did not complete"}]
+
+    def _worker():
+        loop = asyncio.new_event_loop()
+        try:
+            holder[0] = loop.run_until_complete(_run())
+        except Exception as e:  # noqa: BLE001 — best-effort metadata
+            holder[0] = {"__error__": str(e)}
+        finally:
+            loop.close()
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    t.join(timeout=60)
+    return holder[0]
+
+
 def _entity_registry() -> dict:
-    """entity_id -> area name, cached 60s. Gracefully degrades to {} if registry APIs fail."""
+    """entity_id -> {"area": area-name-or-None, "aliases": [...]}, cached 5 min.
+
+    Area resolves entity-level first, then device-inherited. Gracefully
+    degrades to {} so search still works on entity_id + friendly_name alone.
+    """
     with _REG_LOCK:
         now = time.time()
-        if _REGISTRY_CACHE and now - _REGISTRY_CACHE["ts"] < 60:
+        if _REGISTRY_CACHE and now - _REGISTRY_CACHE["ts"] < 300:
             return _REGISTRY_CACHE["reg"]
         try:
-            reg = {e["entity_id"]: e for e in _http("GET", "/api/config/entity_registry")}
-            areas = {a["area_id"]: a["name"] for a in _http("GET", "/api/config/area_registry")}
+            data = _ws_fetch_registry()
+            if "__error__" in data:
+                raise RuntimeError(data["__error__"])
+            area_names = {a.get("area_id"): a.get("name") for a in data["areas"]}
+            dev_area = {d.get("id"): d.get("area_id") for d in data["devices"].values()}
             out = {}
-            for eid, e in reg.items():
-                aid = e.get("area_id")
-                out[eid] = areas.get(aid) if aid else None
+            for eid, rec in data["entities"].items():
+                aid = rec.get("area_id") or dev_area.get(rec.get("device_id"))
+                out[eid] = {
+                    "area": area_names.get(aid) if aid else None,
+                    "aliases": rec.get("aliases") or [],
+                }
             _REGISTRY_CACHE.update(ts=now, reg=out)
             return out
         except Exception:
@@ -143,8 +232,10 @@ def find_home_entities(query: str = "", domain: str = "", area: str = "", limit:
     Resolves a spoken device/room reference to a compact result list
     (entity_id, friendly name, domain, current state, area). Matching is
     forgiving: it tries exact substrings first, then word-overlap (so
-    "master bedroom lamps" can match "Master Bed Lamp L"). At least one of
-    query/domain/area is required. Never returns the full entity inventory.
+    "master bedroom lamps" can match "Master Bed Lamp L"). Entity ID,
+    friendly name, area, and configured entity aliases are all searched.
+    At least one of query/domain/area is required. Never returns the full
+    entity inventory.
     """
     limit = max(1, min(int(limit), 10))
     q = query.strip().lower()
@@ -166,7 +257,9 @@ def find_home_entities(query: str = "", domain: str = "", area: str = "", limit:
             continue
         attrs = st.get("attributes", {})
         name = attrs.get("friendly_name", eid)
-        e_area = reg.get(eid) or ""
+        reg_meta = reg.get(eid) or {}
+        e_area = reg_meta.get("area") or ""
+        aliases = reg_meta.get("aliases") or []
         if dom and e_dom != dom:
             continue
         if ar and ar not in e_area.lower():
@@ -175,10 +268,13 @@ def find_home_entities(query: str = "", domain: str = "", area: str = "", limit:
             scored.append((0, eid, name, st.get("state"), e_area))
             continue
         eid_l, name_l, area_l = eid.lower(), name.lower(), e_area.lower()
-        substr = (q in eid_l) or (q in name_l) or (q in area_l)
-        overlap = _overlap_score(q_tokens, _tokens(name_l) | _tokens(eid_l)) + _overlap_score(q_tokens, _tokens(area_l))
+        alias_l = " ".join(aliases).lower()
+        substr = (q in eid_l) or (q in name_l) or (q in area_l) or (q in alias_l)
+        overlap = (_overlap_score(q_tokens, _tokens(name_l) | _tokens(eid_l))
+                   + _overlap_score(q_tokens, _tokens(area_l))
+                   + _overlap_score(q_tokens, _tokens(alias_l)))
         if substr:
-            score = 1000 + len(q) + overlap
+            score = 1000 + len(q) + overlap + (50 if q in alias_l else 0)
         elif overlap >= 1:
             score = overlap * 10
             if e_dom in q_tokens:
@@ -317,6 +413,8 @@ def run_approved_routine(script: str) -> str:
 def main() -> None:
     if not HA_TOKEN:
         raise SystemExit("HA_TOKEN missing — create the HA long-lived token, store it in the credentials file, then restart the gateway.")
+    # Warm the area/alias registry cache so the first voice query is not slow.
+    threading.Thread(target=_entity_registry, daemon=True).start()
     mcp.run()
 
 
