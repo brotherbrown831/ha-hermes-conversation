@@ -310,6 +310,17 @@ VV is currently usable for ordinary conversation through HA chat. Do not treat t
 
 ### Next step
 
+### 2026-08-26 — MODEL A/B: gpt-5.6-luna → deepseek/deepseek-v4-flash-0731 (OpenRouter)
+
+- Luna "Turn on the master bedroom lights": 4 API calls, ~8.5s LLM, ~11.2s wall, avg 2.1s/call, redundant confirm re-read.
+- flash-0731 "Turn off the office light": 3 API calls, ~2.6s LLM, ~3.1s wall, avg 0.85s/call, no confirm re-read.
+- flash also skips redundant control when target state already matches ("already all on" → 2 calls, ~2.2s).
+- ~3.6× faster end-to-end (Hermes side); harness scorecards had flash 100% vs Luna 93–96% (grader false-failures).
+- VV config: `model.default: deepseek/deepseek-v4-flash-0731` (comment notes rollback = openai/gpt-5.6-luna).
+- Watch-item: flash emits emoji (😊) and occasional chatty replies — voice prompt cleanup should ban emoji + enforce ≤60 chars.
+
+### Next step
+
 Create the base routine scripts in HA (good_morning, goodnight, movie_mode, prepare_leave_home, relax_mode, secure_house) so `run_approved_routine` can actually run; a confirmation flow would be required before ever adding lock/alarm control (currently denied). Firewall port 8643 to the HA VM (or Tailscale) and clean up the VV developer prompt remain pending.
 
 (◕‿◕)★
