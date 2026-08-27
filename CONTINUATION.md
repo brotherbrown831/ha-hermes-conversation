@@ -317,7 +317,7 @@ VV is currently usable for ordinary conversation through HA chat. Do not treat t
 - flash also skips redundant control when target state already matches ("already all on" → 2 calls, ~2.2s).
 - ~3.6× faster end-to-end (Hermes side); harness scorecards had flash 100% vs Luna 93–96% (grader false-failures).
 - VV config: `model.default: deepseek/deepseek-v4-flash-0731` (comment notes rollback = openai/gpt-5.6-luna).
-- MADE PERMANENT 2026-08-26 (rollback comment removed). SOUL.md gained hard voice rules: no emoji/emoticons/symbols ever; replies ideally ≤60 chars, one sentence; action completions get a one-phrase confirmation with no trailing questions. Verified: "Are the garage lights on?" → "The garage lights are off." (25 chars, no emoji); "How's your day going?" → playful reply, no emoji (92 chars — casual chat still has some slack).
+- MADE PERMANENT 2026-08-26 (rollback comment removed). SOUL.md gained hard voice rules: no emoji/emoticons/symbols ever; replies ≤60 chars (hard cap ~120 even on multi-step); action completions get a one-phrase confirmation with no trailing questions; NO play-by-play narration (one short plan line → act → single final confirmation covering all actions). Verified: "Are the garage lights on?" → "The garage lights are off." (25 chars, no emoji); complex E2E 21:10 ("Turn off office lights, turn on master lamps, tell me if garage is open") → "Office lights are off, bedrooms lamps are on, and the garage is closed." (71 chars, no emoji, no filler; 3 API calls / 2 tool turns; garage only read — last state change was the 20:33 physical test, not touched).
 
 ### Next step
 
