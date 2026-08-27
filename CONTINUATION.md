@@ -317,7 +317,7 @@ VV is currently usable for ordinary conversation through HA chat. Do not treat t
 - flash also skips redundant control when target state already matches ("already all on" → 2 calls, ~2.2s).
 - ~3.6× faster end-to-end (Hermes side); harness scorecards had flash 100% vs Luna 93–96% (grader false-failures).
 - VV config: `model.default: deepseek/deepseek-v4-flash-0731` (comment notes rollback = openai/gpt-5.6-luna).
-- Watch-item: flash emits emoji (😊) and occasional chatty replies — voice prompt cleanup should ban emoji + enforce ≤60 chars.
+- MADE PERMANENT 2026-08-26 (rollback comment removed). SOUL.md gained hard voice rules: no emoji/emoticons/symbols ever; replies ideally ≤60 chars, one sentence; action completions get a one-phrase confirmation with no trailing questions. Verified: "Are the garage lights on?" → "The garage lights are off." (25 chars, no emoji); "How's your day going?" → playful reply, no emoji (92 chars — casual chat still has some slack).
 
 ### Next step
 
