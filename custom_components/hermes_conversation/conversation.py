@@ -8,6 +8,8 @@ from typing import Literal
 from aiohttp import ClientError
 from homeassistant.components import conversation
 from homeassistant.const import MATCH_ALL
+from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import intent
 
 from .const import CONF_MODEL, DOMAIN
@@ -31,13 +33,39 @@ class HermesConversationEntity(conversation.ConversationEntity):
         """Return all supported languages."""
         return MATCH_ALL
 
+    def _source_context(self, user_input: conversation.ConversationInput) -> str:
+        """Resolve the source voice device's area into a short context prefix.
+
+        HA sets ``user_input.device_id`` to the device that originated the
+        request (e.g. the ESPHome voice satellite the user spoke to). Resolve
+        that device to its area and return a compact prefix that tells the
+        agent which room the user is in, so an unqualified request like
+        "turn off the lights" can default to that room's devices. Returns an
+        empty string when the source device or its area is unknown.
+        """
+        device_id = getattr(user_input, "device_id", None)
+        if not device_id:
+            return ""
+        dev = dr.async_get(self.hass).async_get(device_id)
+        if not dev or not dev.area_id:
+            return ""
+        area = ar.async_get(self.hass).async_get_area(dev.area_id)
+        if not area or not area.name:
+            return ""
+        device_name = dev.name_by_user or dev.name or ""
+        if device_name:
+            return f'[Source area: {area.name}; device "{device_name}".] '
+        return f"[Source area: {area.name}.] "
+
     async def _async_handle_message(
         self,
         user_input: conversation.ConversationInput,
         chat_log: conversation.ChatLog,
     ) -> conversation.ConversationResult:
-        """Send only the current user text to Hermes."""
+        """Send only the current user text to Hermes, plus a source-area prefix."""
         session_id = user_input.conversation_id or f"ha-{self.entry.entry_id}"
+        prefix = self._source_context(user_input)
+        content = f"{prefix}{user_input.text}" if prefix else user_input.text
         headers = {
             "Authorization": f"Bearer {self.config['api_key']}",
             "Content-Type": "application/json",
@@ -46,7 +74,7 @@ class HermesConversationEntity(conversation.ConversationEntity):
         }
         payload = {
             "model": self.entry.data[CONF_MODEL],
-            "messages": [{"role": "user", "content": user_input.text}],
+            "messages": [{"role": "user", "content": content}],
             "stream": False,
         }
         try:

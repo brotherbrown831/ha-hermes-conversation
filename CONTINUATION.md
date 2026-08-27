@@ -325,3 +325,22 @@ Create the base routine scripts in HA (good_morning, goodnight, movie_mode, prep
 
 (◕‿◕)★
 _\n"}⁨
+
+## 2026-08-27 — Source-area defaulting (device-room context to VV)
+
+### What changed
+
+- `custom_components/hermes_conversation/conversation.py`: `_async_handle_message` now resolves `user_input.device_id` (the device the user spoke to) through the HA device + area registries and prepends a compact source prefix to the message sent to VV, e.g. `[Source area: Master Bedroom; device "HA PE Master".] turn off the lights`. When the source device or its area is unknown (e.g. HA Chat / service tests with no device), it sends the text unchanged (backward compatible).
+- `profiles/vexavoice/SOUL.md`: new rule — when a request carries a source-area prefix and the user does not name a specific room/device, act on the devices in that source area ("the lights" → the source-area lights); when the user names a room/device, use that instead.
+- The `vv_ha_adapter.find_home_entities(query, area=...)` tool already supports filtering by area, so VV can resolve "the lights" → `find_home_entities(query="lights", area="Master Bedroom")`.
+
+### Verified
+
+- `python3 -m compileall -q custom_components tests` → OK.
+- Contract tests: `6 passed`.
+- Master bedroom Voice PE = device "HA PE Master", area_id `master_bedroom`, area name "Master Bedroom".
+- `light.sonoffext1` (Master Bed Lamp L) and `light.master_bed_lamp_r` (Master bed Lamp R) both carry area "Master Bedroom" (device-inherited), so `find_home_entities(area="Master Bedroom")` finds them.
+
+### Deployment pending (HACS)
+
+Commit pushed to `brotherbrown831/ha-hermes-conversation`; update through HACS (`update_information` then `download`), then restart HA to load the new integration code.
