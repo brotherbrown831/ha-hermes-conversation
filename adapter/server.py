@@ -21,7 +21,15 @@ import time
 import urllib.error
 import urllib.request
 
-from mcp.server.fastmcp import FastMCP
+try:
+    # mcp >= 2.0 ships the server class at the top level. `mcp.server.fastmcp`
+    # was REMOVED in mcp 2.0.0, so the old import silently killed this adapter.
+    from mcp.server import MCPServer as _ServerClass  # type: ignore[attr-defined]
+except ImportError:  # mcp < 2.0 fallback
+    try:
+        from fastmcp import FastMCP as _ServerClass  # type: ignore[no-redef]
+    except ImportError:
+        from mcp.server.fastmcp import FastMCP as _ServerClass  # type: ignore[no-redef]
 
 HA_BASE_URL = os.environ.get("HA_BASE_URL", "http://10.0.10.117:8123").rstrip("/")
 HA_TOKEN = os.environ.get("HA_TOKEN", "")
@@ -222,7 +230,7 @@ def _load_allowed_scripts() -> set[str]:
         return set()
 
 
-mcp = FastMCP("vv-ha-adapter")
+mcp = _ServerClass("vv-ha-adapter")
 
 
 @mcp.tool()
