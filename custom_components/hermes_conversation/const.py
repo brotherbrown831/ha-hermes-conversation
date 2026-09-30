@@ -29,3 +29,18 @@ def is_silence_response(speech: str) -> bool:
     """
     stripped = speech.strip()
     return not stripped or stripped.lower() in SILENCE_TOKENS
+
+
+def expects_reply(speech: str) -> bool:
+    """True when the agent's reply asks the user something.
+
+    Drives Home Assistant's continued conversation: a clarifying question must
+    leave the microphone open so the answer needs no repeat wake word, while a
+    statement ("Lights are on.") must end the turn. The ESPHome satellite
+    re-opens the mic only when the agent returns continue_conversation=True
+    (voice_assistant.cpp: on TTS end, `if (continue_conversation_)` ->
+    START_MICROPHONE; otherwise -> IDLE) and drops the wake-word requirement for
+    that follow-up run.
+    """
+    text = speech.strip().strip("\"'").strip()
+    return text.endswith("?")

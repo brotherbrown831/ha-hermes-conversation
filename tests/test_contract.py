@@ -102,3 +102,37 @@ def test_whitespace_and_token_replies_normalise_to_empty_speech() -> None:
     for speech in ("<silence>", "   ", ""):
         normalised = "" if const.is_silence_response(speech) else speech
         assert normalised.strip() == ""
+
+
+def test_questions_keep_the_microphone_open() -> None:
+    const = _load_const()
+    for question in (
+        "Which device would you like me to turn on?",
+        "Turn on the what?",
+        '  "Want me to check the doors?"  ',
+    ):
+        assert const.expects_reply(question), repr(question)
+
+
+def test_statements_and_silence_end_the_turn() -> None:
+    const = _load_const()
+    for statement in (
+        "Lights are on.",
+        "Done.",
+        "",
+        "   ",
+        "<silence>",
+        "Nope, the garage door is closed.",
+    ):
+        assert not const.expects_reply(statement), repr(statement)
+
+
+def test_silent_turns_cannot_request_a_follow_up() -> None:
+    # The integration derives continue_conversation from the normalised speech,
+    # so a silent turn must never open the microphone afterwards.
+    const = _load_const()
+    speech = "<silence>"
+    if const.is_silence_response(speech):
+        speech = ""
+    assert speech == ""
+    assert not const.expects_reply(speech)

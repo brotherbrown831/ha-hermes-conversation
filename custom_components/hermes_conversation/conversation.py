@@ -12,7 +12,7 @@ from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import intent
 
-from .const import CONF_MODEL, DOMAIN, is_silence_response
+from .const import CONF_MODEL, DOMAIN, expects_reply, is_silence_response
 
 
 class HermesConversationEntity(conversation.ConversationEntity):
@@ -111,7 +111,10 @@ class HermesConversationEntity(conversation.ConversationEntity):
         return conversation.ConversationResult(
             response=response,
             conversation_id=user_input.conversation_id,
-            continue_conversation=False,
+            # Leave the microphone open when the reply asks the user something, so
+            # a clarification can be answered without repeating the wake word. A
+            # statement (or a silent turn) ends the conversation as before.
+            continue_conversation=expects_reply(speech),
         )
 
     @staticmethod
