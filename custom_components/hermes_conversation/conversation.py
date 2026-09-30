@@ -12,7 +12,7 @@ from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import intent
 
-from .const import CONF_MODEL, DOMAIN
+from .const import CONF_MODEL, DOMAIN, is_silence_response
 
 
 class HermesConversationEntity(conversation.ConversationEntity):
@@ -95,6 +95,13 @@ class HermesConversationEntity(conversation.ConversationEntity):
             return self._error_result(user_input, session_id)
         if not isinstance(speech, str):
             return self._error_result(user_input, session_id)
+
+        if is_silence_response(speech):
+            # The utterance was not addressed to the agent (background
+            # conversation, media audio, an overheard fragment): drop the reply
+            # to an empty string so the Assist pipeline skips TTS and the
+            # satellite stays silent instead of speaking a control token.
+            speech = ""
 
         chat_log.async_add_assistant_content_without_tools(
             conversation.AssistantContent(agent_id=self.entity_id, content=speech)

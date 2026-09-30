@@ -62,3 +62,43 @@ def test_json_round_trip() -> None:
     assert json.loads(json.dumps({"role": "user", "content": "hello"}))[
         "role"
     ] == "user"
+
+
+def _load_const():
+    """Load const.py standalone (it must stay HA-import-free)."""
+    import importlib.util
+
+    path = ROOT / "custom_components/hermes_conversation/const.py"
+    spec = importlib.util.spec_from_file_location("hermes_const_under_test", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_silence_token_is_recognised_and_never_spoken() -> None:
+    const = _load_const()
+    for silence in ("", "   ", "\n", "<silence>", "<SILENCE>", " <silence> ", "[silence]"):
+        assert const.is_silence_response(silence), repr(silence)
+
+
+def test_real_replies_are_not_swallowed() -> None:
+    const = _load_const()
+    for speech in (
+        "Lights are on.",
+        "No response needed.",
+        "Done.",
+        "silence",
+        "<silence>maybe",
+    ):
+        assert not const.is_silence_response(speech), repr(speech)
+
+
+def test_whitespace_and_token_replies_normalise_to_empty_speech() -> None:
+    # The Assist pipeline skips TTS when the speech text is empty or whitespace
+    # (assist_pipeline/pipeline.py: `if ... or tts_input.strip()`), so both a
+    # silence token and a blank reply must normalise to the empty string.
+    const = _load_const()
+    for speech in ("<silence>", "   ", ""):
+        normalised = "" if const.is_silence_response(speech) else speech
+        assert normalised.strip() == ""
